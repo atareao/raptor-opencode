@@ -77,6 +77,8 @@ def test_generate_writes_every_artifact(
 
     policy = json.loads((out / "raptor-policy.json").read_text(encoding="utf-8"))
     assert policy["version"] == 1
+    assert policy["raptor_home"] == str(raptor_fixture.resolve())
+    assert policy["default"] == {"unrestricted": False}
     assert policy["agents"]["crash-report-fetcher"]["webfetch"]["domains"] == []
     fragment = _parse_jsonc((out / "opencode.fragment.jsonc").read_text(encoding="utf-8"))
     assert fragment["instructions"] == ["{env:RAPTOR_HOME}/AGENTS.md"]
@@ -271,6 +273,8 @@ def test_full_pipeline_on_real_raptor(
     assert len(list((out / "commands").glob("*.md"))) == 37
 
     policy = json.loads((out / "raptor-policy.json").read_text(encoding="utf-8"))
+    assert policy["raptor_home"] == str(RAPTOR_SRC.resolve())
+    assert policy["default"] == {"unrestricted": False}
     assert policy["hooks"] == {
         "bash": ".claude/hooks/bash-command-allowlist.py",
         "webfetch": ".claude/hooks/webfetch-domain-allowlist.py",

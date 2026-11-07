@@ -55,7 +55,9 @@ def test_extracts_bash_prefixes_and_web_fetch_hosts(tmp_path: Path) -> None:
     policy = build_policy(root)
 
     assert policy["version"] == 1
-    assert policy["raptor_home"] == "$RAPTOR_HOME"
+    assert policy["comment"].startswith("Empty 'bash' or 'webfetch' rules")
+    assert policy["raptor_home"] == str(root.resolve())
+    assert policy["default"] == {"unrestricted": False}
     assert policy["hooks"] == {
         "bash": ".claude/hooks/bash-command-allowlist.py",
         "webfetch": ".claude/hooks/webfetch-domain-allowlist.py",

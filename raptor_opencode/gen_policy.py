@@ -33,6 +33,12 @@ BASH_HOOK = "bash-command-allowlist.py"
 WEBFETCH_HOOK = "webfetch-domain-allowlist.py"
 CLAUDE_PROJECT_DIR = "$CLAUDE_PROJECT_DIR"
 _PROJECT_DIR_PREFIXES = ("${CLAUDE_PROJECT_DIR}", "$CLAUDE_PROJECT_DIR")
+POLICY_COMMENT = (
+    "Empty 'bash' or 'webfetch' rules mean the agent had no such PreToolUse hook "
+    "in Claude Code, so the guard leaves that tool unrestricted (parity). "
+    "'default.unrestricted' only applies to sessions whose agent was never "
+    "reported by chat.params; false fails closed."
+)
 
 
 def build_policy(raptor_home: str | Path) -> dict[str, Any]:
@@ -60,12 +66,15 @@ def build_policy(raptor_home: str | Path) -> dict[str, Any]:
         if candidate.is_file():
             hooks[_hook_key(hook_name)] = f".claude/hooks/{hook_name}"
 
+    resolved_home = str(Path(raptor_home).resolve())
     for warning in warnings:
         logger.warning("%s", warning)
 
     return {
         "version": POLICY_VERSION,
-        "raptor_home": "$RAPTOR_HOME",
+        "comment": POLICY_COMMENT,
+        "raptor_home": resolved_home,
+        "default": {"unrestricted": False},
         "hooks": {key: hooks[key] for key in sorted(hooks)},
         "agents": {name: agents[name] for name in sorted(agents)},
         "warnings": warnings,
