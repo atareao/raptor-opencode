@@ -20,6 +20,7 @@ from .gen_policy import build_policy, write_policy
 from .gen_skills import DEFAULT_MODE, generate_skills, write_skills_map
 from .installer import DEFAULT_REF, install, uninstall
 from .paths import Paths, resolve_paths
+from .scope import SCOPES
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -72,9 +73,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     install_parser = subparsers.add_parser(
         "install",
-        help="install RAPTOR into the user's OpenCode configuration",
+        help="install RAPTOR into a global or project OpenCode configuration",
         description="Clone RAPTOR, generate its OpenCode port and link the artifacts.",
     )
+    _add_scope_args(install_parser)
     install_parser.add_argument(
         "--raptor-home",
         type=Path,
@@ -86,19 +88,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--generated-dir",
         type=Path,
         metavar="PATH",
-        help="generated artifacts (default: $XDG_DATA_HOME/raptor-opencode/generated)",
+        help=(
+            "generated artifacts (default: $XDG_DATA_HOME/raptor-opencode/generated, "
+            "or <project>/.opencode/generated with --scope project)"
+        ),
     )
     install_parser.add_argument(
         "--opencode-dir",
         type=Path,
         metavar="PATH",
-        help="OpenCode config dir (default: $XDG_CONFIG_HOME/opencode)",
+        help=(
+            "OpenCode config dir (default: $XDG_CONFIG_HOME/opencode, or "
+            "<project>/.opencode with --scope project)"
+        ),
     )
     install_parser.add_argument(
         "--skills-dir",
         type=Path,
         metavar="PATH",
-        help="global skills dir (default: ~/.agents/skills)",
+        help="skills dir (default: ~/.agents/skills, or <project>/.agents/skills)",
     )
     install_parser.add_argument("--copy", action="store_true", help="copy instead of symlinking")
     install_parser.add_argument("--dry-run", action="store_true", help="print the plan only")
@@ -106,7 +114,10 @@ def build_parser() -> argparse.ArgumentParser:
     install_parser.add_argument(
         "--merge-config",
         action="store_true",
-        help="merge the fragment into <opencode-dir>/opencode.jsonc",
+        help=(
+            "merge the fragment into the scope's config file "
+            "(global: <opencode-dir>/opencode.jsonc; project: ./opencode.json)"
+        ),
     )
     install_parser.add_argument(
         "--skip-deps",
@@ -117,8 +128,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     uninstall_parser = subparsers.add_parser(
         "uninstall",
-        help="remove artifacts recorded in install-manifest.json",
+        help="remove artifacts recorded in the install manifest",
     )
+    _add_scope_args(uninstall_parser)
     uninstall_parser.add_argument("--generated-dir", type=Path, metavar="PATH")
     uninstall_parser.add_argument("--opencode-dir", type=Path, metavar="PATH")
     uninstall_parser.add_argument("--skills-dir", type=Path, metavar="PATH")
@@ -143,6 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="RAPTOR checkout (default: $RAPTOR_HOME or ~/.local/share/raptor)",
     )
     doctor_parser.add_argument("--ref", default=DEFAULT_REF, help="expected upstream git ref")
+    _add_scope_args(doctor_parser)
     doctor_parser.add_argument(
         "--opencode-dir",
         type=Path,
@@ -191,6 +204,25 @@ def _add_source_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_scope_args(parser: argparse.ArgumentParser) -> None:
+    """Add ``--scope`` and ``--project-dir`` to install/uninstall/doctor."""
+    parser.add_argument(
+        "--scope",
+        choices=SCOPES,
+        default="global",
+        help=(
+            "global: user configuration under $XDG_CONFIG_HOME; project: everything "
+            "inside the project directory (default: global)"
+        ),
+    )
+    parser.add_argument(
+        "--project-dir",
+        type=Path,
+        metavar="PATH",
+        help="project directory for --scope project (default: the working directory)",
+    )
+
+
 def cmd_version(_args: argparse.Namespace) -> int:
     print(f"raptor-opencode {__version__}")
     return 0
@@ -203,6 +235,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         opencode_dir=args.opencode_dir,
         generated_dir=args.generated_dir,
         skills=args.skills_dir,
+        scope=args.scope,
+        cwd=args.project_dir,
     )
     if args.json:
         print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
@@ -302,15 +336,22 @@ def cmd_install(args: argparse.Namespace) -> int:
         yes=args.yes,
         merge_config=args.merge_config,
         skip_deps=args.skip_deps,
+        scope=args.scope,
+        cwd=args.project_dir,
     )
     for warning in result.warnings:
         print(f"warning: {warning}", file=sys.stderr)
     prefix = "[dry-run] would install" if args.dry_run else "installed"
     print(f"{prefix} {result.agents} agents, {result.commands} commands, {result.skills} skills")
+    print(f"scope:     {result.scope}")
+    if result.project_root is not None:
+        print(f"project:   {result.project_root}")
     print(f"generated: {result.generated_dir}")
     print(f"opencode:  {result.opencode_dir}")
     print(f"skills:    {result.skills_dir}")
     print(f"manifest:  {result.manifest_path}")
+    if result.config_path is not None:
+        print(f"config:    {result.config_path}")
     if not args.dry_run:
         fragment = result.generated_dir / "opencode.fragment.jsonc"
         if fragment.is_file():
@@ -325,10 +366,15 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
         generated=args.generated_dir,
         opencode=args.opencode_dir,
         skills=args.skills_dir,
+        scope=args.scope,
+        cwd=args.project_dir,
         dry_run=args.dry_run,
     )
     action = "would remove" if args.dry_run else "removed"
-    print(f"{action} {result.removed_links} links and restored {result.restored_backups} backups")
+    print(
+        f"{action} {result.removed_links} links and restored {result.restored_backups} backups "
+        f"({args.scope} scope, manifest {result.manifest_path})"
+    )
     return 0
 
 

@@ -1,9 +1,11 @@
 """Install generated RAPTOR artifacts into an OpenCode configuration.
 
-Every write is bounded by the explicit ``--generated-dir``, ``--opencode-dir``
-and ``--skills-dir`` targets (or their XDG defaults). The installer records
-what it created in a manifest so ``uninstall`` can reverse it without deleting
-user-owned directories.
+Every write is bounded by the :class:`~.scope.Layout` of the chosen scope:
+``global`` writes under ``$XDG_CONFIG_HOME/opencode``, ``$XDG_DATA_HOME`` and
+``~/.agents/skills``; ``project`` keeps everything inside the project directory
+except the shared virtualenv. The installer records what it created in a
+manifest so ``uninstall`` can reverse it without deleting user-owned
+directories.
 """
 
 from __future__ import annotations
@@ -27,10 +29,11 @@ from .paths import opencode_config_dir
 from .paths import raptor_home as resolve_raptor_home
 from .paths import skills_dir as default_skills_dir
 from .pipeline import generate_tree
+from .scope import GLOBAL_MANIFEST_NAME as MANIFEST_NAME
+from .scope import Scope, resolve_layout
 
 DEFAULT_REF = "v3.1.0"
 UPSTREAM_URL = "https://github.com/gadievron/raptor.git"
-MANIFEST_NAME = "install-manifest.json"
 MANIFEST_VERSION = 1
 BACKUP_SUFFIX = "bak-raptor-opencode"
 PLUGIN_FILES = (PLUGIN_NAME, CORE_NAME)
@@ -52,6 +55,9 @@ class InstallResult:
     links: int
     backups: int
     warnings: tuple[str, ...] = ()
+    scope: Scope = "global"
+    project_root: Path | None = None
+    config_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +191,8 @@ def install(
     yes: bool = False,
     merge_config: bool = False,
     skip_deps: bool = False,
+    scope: Scope = "global",
+    cwd: str | Path | None = None,
     run: Runner = subprocess.run,
     env: Mapping[str, str] | None = None,
     now: datetime | None = None,
@@ -192,22 +200,33 @@ def install(
     """Install RAPTOR into OpenCode.
 
     ``yes`` is accepted by the CLI to acknowledge the prompt; programmatic
-    callers are assumed to have confirmed already.
+    callers are assumed to have confirmed already. ``scope`` selects between
+    the global user configuration and the project rooted at ``cwd``.
     """
     environ = os.environ if env is None else env
-    root, generated_dir, opencode_dir, skills_dir = default_paths(
-        raptor_home=raptor_home,
+    root = resolve_raptor_home(raptor_home, env=environ)
+    layout = resolve_layout(
+        scope,
+        cwd=cwd,
         generated=generated,
         opencode=opencode,
         skills=skills,
         env=environ,
     )
-    manifest_path = generated_dir.parent / MANIFEST_NAME
+    generated_dir = layout.generated
+    opencode_dir = layout.opencode
+    skills_dir = layout.skills
+    manifest_path = layout.manifest
     warnings: list[str] = []
     timestamp = _timestamp(now)
 
     if skip_deps:
         warnings.append("--skip-deps: RAPTOR_PYTHON will not be set")
+    if scope == "project" and not merge_config:
+        warnings.append(
+            "--scope project without --merge-config: nothing writes the project "
+            f"config ({layout.config}); OpenCode will not load RAPTOR"
+        )
     if dry_run:
         return InstallResult(
             agents=0,
@@ -220,6 +239,9 @@ def install(
             links=0,
             backups=0,
             warnings=tuple(warnings),
+            scope=layout.scope,
+            project_root=layout.project_root,
+            config_path=layout.config,
         )
     if not yes and not sys.stdin.isatty():
         raise RaptorOpencodeError("refusing a non-interactive install without --yes")
@@ -227,7 +249,7 @@ def install(
     ensure_checkout(root, ref, run=run)
     manifest = _load_manifest(manifest_path)
     created_dirs: list[str] = list(manifest.created_dirs)
-    venv_dir = generated_dir.parent / "venv"
+    venv_dir = layout.venv
     _ensure_parent(venv_dir.parent, created_dirs)
     python = ensure_dependencies(
         venv_dir,
@@ -276,7 +298,7 @@ def install(
     if merge_config:
         _merge_into_opencode(
             tree.fragment,
-            opencode_dir,
+            layout.config,
             timestamp=timestamp,
             manifest=manifest,
             created_dirs=created_dirs,
@@ -294,6 +316,9 @@ def install(
         links=len(links),
         backups=len(manifest.backups),
         warnings=tuple(warnings),
+        scope=layout.scope,
+        project_root=layout.project_root,
+        config_path=layout.config,
     )
 
 
@@ -302,15 +327,27 @@ def uninstall(
     generated: str | Path | None = None,
     opencode: str | Path | None = None,
     skills: str | Path | None = None,
+    scope: Scope = "global",
+    cwd: str | Path | None = None,
     dry_run: bool = False,
     env: Mapping[str, str] | None = None,
 ) -> UninstallResult:
-    """Reverse a previous install using its manifest."""
+    """Reverse a previous install using the manifest of *scope*'s layout.
+
+    ``project`` scope reads ``.opencode/raptor-manifest.json`` inside ``cwd`` and
+    leaves nothing of its own behind: symlinks, backups, merged configuration,
+    the generated tree and the shared virtualenv are all undone.
+    """
     environ = os.environ if env is None else env
-    _root, generated_dir, _opencode_dir, _skills_dir = default_paths(
-        generated=generated, opencode=opencode, skills=skills, env=environ
+    layout = resolve_layout(
+        scope,
+        cwd=cwd,
+        generated=generated,
+        opencode=opencode,
+        skills=skills,
+        env=environ,
     )
-    manifest_path = generated_dir.parent / MANIFEST_NAME
+    manifest_path = layout.manifest
     manifest = _load_manifest(manifest_path)
     if not manifest.links and not manifest.backups and not manifest.config:
         raise RaptorOpencodeError(f"no install manifest at {manifest_path}")
@@ -345,7 +382,7 @@ def uninstall(
 
         restored = _restore_config(manifest, restored)
         manifest_path.unlink(missing_ok=True)
-        _remove_generated(generated_dir, manifest)
+        _remove_generated(layout.generated, layout.venv, manifest)
 
     return UninstallResult(
         removed_links=removed,
@@ -531,16 +568,20 @@ def _run(
 
 def _merge_into_opencode(
     fragment_path: Path,
-    opencode_dir: Path,
+    target: Path,
     *,
     timestamp: str,
     manifest: _Manifest,
     created_dirs: list[str],
 ) -> None:
+    """Merge *fragment_path* into *target*, the config file OpenCode will load.
+
+    ``target`` comes from :class:`~.scope.Layout`, so project scope writes the
+    project's own config file and global scope keeps ``opencode.jsonc``.
+    """
     fragment = _loads_jsonc(fragment_path.read_text(encoding="utf-8"))
     if not isinstance(fragment, dict):
         raise GenerationError(f"{fragment_path}: fragment must be a JSON object")
-    target = opencode_dir / "opencode.jsonc"
     _ensure_parent(target.parent, created_dirs)
     if target.is_file():
         original = target.read_text(encoding="utf-8")
@@ -556,7 +597,14 @@ def _merge_into_opencode(
         target.write_text(merged, encoding="utf-8")
         manifest.config = {"path": str(target), "backup": str(backup)}
     else:
-        target.write_text(fragment_path.read_text(encoding="utf-8"), encoding="utf-8")
+        # A ``.json`` config must stay strict JSON: only ``.jsonc`` files keep
+        # the generated comment header.
+        text = (
+            fragment_path.read_text(encoding="utf-8")
+            if target.suffix == ".jsonc"
+            else json.dumps(fragment, indent=2, ensure_ascii=False) + "\n"
+        )
+        target.write_text(text, encoding="utf-8")
         manifest.config = {"path": str(target), "created": True}
 
 
@@ -578,16 +626,22 @@ def _restore_config(manifest: _Manifest, restored: int) -> int:
     return restored
 
 
-def _remove_generated(generated_dir: Path, manifest: _Manifest) -> None:
+def _remove_generated(generated_dir: Path, venv: Path, manifest: _Manifest) -> None:
+    """Delete the generated tree, the shared virtualenv and now-empty dirs."""
     if generated_dir.exists():
         shutil.rmtree(generated_dir)
-    venv = generated_dir.parent / "venv"
     if venv.exists():
         shutil.rmtree(venv)
     for raw in sorted(manifest.created_dirs, key=len, reverse=True):
         path = Path(raw)
         if path.is_dir() and not any(path.iterdir()):
             path.rmdir()
+    # The generator creates ``generated_dir.parent`` (``.opencode`` for a project)
+    # before any link is planned, so it never lands in ``created_dirs``: prune it
+    # here when nothing of the user's is left inside.
+    parent = generated_dir.parent
+    if parent.is_dir() and not any(parent.iterdir()):
+        parent.rmdir()
 
 
 # --- minimal JSONC parser / comment-preserving merger -----------------------
@@ -886,6 +940,7 @@ def _strip_comments(text: str) -> str:
 
 __all__ = [
     "DEFAULT_REF",
+    "MANIFEST_NAME",
     "InstallResult",
     "JsoncError",
     "UninstallResult",
