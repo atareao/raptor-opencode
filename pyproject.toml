@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "raptor-opencode"
-dynamic = ["version"]
+version = "0.1.0"
 description = "Adapter that ports the RAPTOR framework from Claude Code to OpenCode"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -21,9 +21,6 @@ dev = [
 
 [project.scripts]
 raptor-opencode = "raptor_opencode.cli:main"
-
-[tool.hatch.version]
-path = "raptor_opencode/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["raptor_opencode"]
