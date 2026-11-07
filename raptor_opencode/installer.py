@@ -729,6 +729,11 @@ def _loads_jsonc(text: str) -> Any:
     return _parse_document(text).value
 
 
+def loads_jsonc(text: str) -> Any:
+    """Parse JSONC (comments and trailing commas) without rewriting the text."""
+    return _parse_document(text).value
+
+
 def merge_jsonc(text: str, fragment: Mapping[str, Any]) -> str:
     """Merge *fragment* into *text*, preserving comments and foreign keys.
 
@@ -882,11 +887,13 @@ def _strip_comments(text: str) -> str:
 __all__ = [
     "DEFAULT_REF",
     "InstallResult",
+    "JsoncError",
     "UninstallResult",
     "default_paths",
     "ensure_checkout",
     "ensure_dependencies",
     "install",
+    "loads_jsonc",
     "merge_jsonc",
     "uninstall",
 ]

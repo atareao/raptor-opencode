@@ -2,7 +2,7 @@
 
 The generated command deliberately does not copy RAPTOR's instructions: it
 points the model at the original file inside ``$RAPTOR_HOME`` and tells it to
-honour RAPTOR's dispatch rules. That keeps the 39 commands in sync with
+honour RAPTOR's dispatch rules. That keeps the 37 commands of v3.1.0 in sync with
 upstream and guarantees operator arguments reach RAPTOR untouched.
 """
 

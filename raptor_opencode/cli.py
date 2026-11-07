@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from . import __version__
+from .doctor import doctor
 from .errors import RaptorOpencodeError
 from .gen_agents import load_agents
 from .gen_agents_md import detect_tag, generate_agents_md
@@ -127,6 +128,46 @@ def build_parser() -> argparse.ArgumentParser:
     version = subparsers.add_parser("version", help="print the adapter version")
     version.set_defaults(func=cmd_version)
 
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="check an installed raptor-opencode tree",
+        description=(
+            "Verify RAPTOR_HOME, the hook scripts, the generated artifacts, the manifest "
+            "symlinks, AGENTS.md and the OpenCode configuration. Read-only."
+        ),
+    )
+    doctor_parser.add_argument(
+        "--raptor-home",
+        type=Path,
+        metavar="PATH",
+        help="RAPTOR checkout (default: $RAPTOR_HOME or ~/.local/share/raptor)",
+    )
+    doctor_parser.add_argument("--ref", default=DEFAULT_REF, help="expected upstream git ref")
+    doctor_parser.add_argument(
+        "--opencode-dir",
+        type=Path,
+        metavar="PATH",
+        help="OpenCode config dir (default: $XDG_CONFIG_HOME/opencode)",
+    )
+    doctor_parser.add_argument(
+        "--generated-dir",
+        type=Path,
+        metavar="PATH",
+        help="generated artifacts (default: $XDG_DATA_HOME/raptor-opencode/generated)",
+    )
+    doctor_parser.add_argument(
+        "--skills-dir",
+        type=Path,
+        metavar="PATH",
+        help="global skills dir (default: ~/.agents/skills)",
+    )
+    doctor_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="print a machine-readable report",
+    )
+    doctor_parser.set_defaults(func=cmd_doctor)
+
     return parser
 
 
@@ -153,6 +194,21 @@ def _add_source_args(parser: argparse.ArgumentParser) -> None:
 def cmd_version(_args: argparse.Namespace) -> int:
     print(f"raptor-opencode {__version__}")
     return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    report = doctor(
+        raptor_home=args.raptor_home,
+        ref=args.ref,
+        opencode_dir=args.opencode_dir,
+        generated_dir=args.generated_dir,
+        skills=args.skills_dir,
+    )
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2, ensure_ascii=False))
+    else:
+        print(report.render())
+    return report.exit_code
 
 
 def cmd_generate(args: argparse.Namespace) -> int:
@@ -215,7 +271,9 @@ def cmd_generate(args: argparse.Namespace) -> int:
         print(f"[dry-run] {path}" if args.dry_run else path)
 
     agents_md = generate_agents_md(
-        paths.raptor_home, paths.opencode_config, tag=detect_tag(paths.raptor_home),
+        paths.raptor_home,
+        paths.opencode_config,
+        tag=detect_tag(paths.raptor_home),
         dry_run=args.dry_run,
     )
     print(f"[dry-run] {agents_md}" if args.dry_run else agents_md)
@@ -248,10 +306,7 @@ def cmd_install(args: argparse.Namespace) -> int:
     for warning in result.warnings:
         print(f"warning: {warning}", file=sys.stderr)
     prefix = "[dry-run] would install" if args.dry_run else "installed"
-    print(
-        f"{prefix} {result.agents} agents, {result.commands} commands, "
-        f"{result.skills} skills"
-    )
+    print(f"{prefix} {result.agents} agents, {result.commands} commands, {result.skills} skills")
     print(f"generated: {result.generated_dir}")
     print(f"opencode:  {result.opencode_dir}")
     print(f"skills:    {result.skills_dir}")
@@ -273,10 +328,7 @@ def cmd_uninstall(args: argparse.Namespace) -> int:
         dry_run=args.dry_run,
     )
     action = "would remove" if args.dry_run else "removed"
-    print(
-        f"{action} {result.removed_links} links and restored "
-        f"{result.restored_backups} backups"
-    )
+    print(f"{action} {result.removed_links} links and restored {result.restored_backups} backups")
     return 0
 
 

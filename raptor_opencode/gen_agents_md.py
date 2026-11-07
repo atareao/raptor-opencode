@@ -41,6 +41,21 @@ def rewrite_paths(text: str) -> str:
     return text
 
 
+def find_unrewritten_paths(text: str) -> list[str]:
+    """Return Claude-relative paths that OpenCode cannot resolve.
+
+    Each entry names the line and the convention it found, so ``doctor`` can
+    explain a rewriter regression instead of only failing.
+    """
+    problems: list[str] = []
+    for number, line in enumerate(text.splitlines(), 1):
+        if _RELATIVE_CLAUDE.search(line):
+            problems.append(f"line {number}: relative .claude/ path")
+        if _RELATIVE_LIBEXEC.search(line):
+            problems.append(f"line {number}: libexec/ without $RAPTOR_HOME prefix")
+    return problems
+
+
 def render_agents_md(source: str, *, tag: str = DEFAULT_TAG) -> str:
     """Return the full ``AGENTS.md`` document for *source*."""
     header = _HEADER.format(tag=tag)
@@ -95,6 +110,7 @@ __all__ = [
     "DEFAULT_TAG",
     "SOURCE_NAME",
     "detect_tag",
+    "find_unrewritten_paths",
     "generate_agents_md",
     "render_agents_md",
     "rewrite_paths",
