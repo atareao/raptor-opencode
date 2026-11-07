@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "raptor-opencode"
+dynamic = ["version"]
+description = "Adapter that ports the RAPTOR framework from Claude Code to OpenCode"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "atareao" }]
+keywords = ["raptor", "opencode", "security", "adapter"]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff==0.17.4",
+]
+
+[project.scripts]
+raptor-opencode = "raptor_opencode.cli:main"
+
+[tool.hatch.version]
+path = "raptor_opencode/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["raptor_opencode"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "integration: runs against a real RAPTOR checkout (skipped when unavailable)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["raptor_opencode", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["raptor_opencode"]
