@@ -22,7 +22,7 @@ def test_generate_plugin_writes_into_out_dir(tmp_path: Path) -> None:
     assert plugin_path == tmp_path / "plugins" / PLUGIN_NAME
     assert core_path == tmp_path / "plugins" / CORE_NAME
     assert plugin_path.read_text(encoding="utf-8").startswith("import")
-    assert core_path.read_text(encoding="utf-8").startswith("import")
+    assert core_path.read_text(encoding="utf-8").startswith("// @ts-check")
 
 
 def test_plugin_is_a_thin_io_layer_over_the_core(tmp_path: Path) -> None:
@@ -36,6 +36,17 @@ def test_plugin_is_a_thin_io_layer_over_the_core(tmp_path: Path) -> None:
     assert "hookInvocation" in plugin
     assert "buildPayload" in plugin
     assert "interpretResult" in plugin
+
+    assert '"chat.params"' in plugin
+    assert '"chat.message"' in plugin
+    assert "SessionRegistry" in plugin
+    assert "handleToolBefore" in plugin
+    assert "default?.unrestricted" in plugin
+    assert "policy.raptor_home" in plugin
+    assert "selectEntry(policy, input?.agent)" not in plugin
+    tool_handler = plugin.rsplit('"tool.execute.before"', 1)[1]
+    assert "input.agent" not in tool_handler
+    assert "input?.agent" not in tool_handler
 
     assert "Bun.spawn" in plugin
     assert "node:child_process" in plugin
@@ -57,6 +68,18 @@ def test_generated_core_has_no_absolute_environment_paths(tmp_path: Path) -> Non
     assert "/tmp/" not in core
     assert str(RAPTOR_SRC) not in core
     assert "/home/" not in core
+
+
+def test_repository_ships_typescript_setup() -> None:
+    root = Path(__file__).resolve().parent.parent
+    package = json.loads((root / "package.json").read_text(encoding="utf-8"))
+
+    assert (root / "tsconfig.json").is_file()
+    assert (root / "raptor_opencode" / "assets" / "types" / "raptor-guard-core.d.ts").is_file()
+    assert (root / "raptor_opencode" / "assets" / "raptor-guard-core.d.mts").is_file()
+    assert "@types/bun" in package["devDependencies"]
+    assert package["scripts"]["typecheck"] == "tsc --noEmit"
+    assert package["scripts"]["test:js"] == "node --test tests_js/*.test.mjs"
 
 
 def test_generate_plugin_is_idempotent(tmp_path: Path) -> None:

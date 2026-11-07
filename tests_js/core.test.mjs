@@ -110,3 +110,29 @@ test("interpretResult fails closed on unexpected exit codes", () => {
   assert.equal(spawnFailure.action, "block");
   assert.match(spawnFailure.message, /spawn failure|exit -1/);
 });
+
+test("hookInvocation resolves anchor against the project first, then RAPTOR_HOME", async () => {
+  const { mkdirSync, mkdtempSync, rmSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const root = mkdtempSync(join(tmpdir(), "raptor-anchor-"));
+  const project = join(root, "project");
+  const anchor = ".claude/run/agent.anchor";
+  mkdirSync(join(project, ".claude", "run"), { recursive: true });
+  writeFileSync(join(project, anchor), "anchor\n");
+
+  const entry = {
+    webfetch: { domains: [], https_any: false, anchor_file: anchor },
+    hooks: { webfetch: ".claude/hooks/webfetch-domain-allowlist.py" },
+  };
+
+  try {
+    const withProject = hookInvocation(entry, "webfetch", "/opt/raptor", project);
+    assert.equal(withProject.args.at(-1), join(project, anchor));
+
+    const withoutProject = hookInvocation(entry, "webfetch", "/opt/raptor", join(root, "empty"));
+    assert.equal(withoutProject.args.at(-1), join("/opt/raptor", anchor));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
