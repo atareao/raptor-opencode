@@ -37,16 +37,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_source_args(generate)
     generate.add_argument(
-        "--skills-dir",
-        type=Path,
-        metavar="PATH",
-        help="OpenCode skills directory (default: ~/.agents/skills)",
-    )
-    generate.add_argument(
         "--skills-mode",
         choices=("symlink", "copy"),
         default=DEFAULT_MODE,
-        help="how to install skills (default: symlink, with copy as fallback)",
+        help="how to install skills under <out-dir>/skills (default: symlink)",
+    )
+    generate.add_argument(
+        "--collision-dir",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "read-only directory to check for skill name collisions "
+            "(default: none; never points at the global skills directory)"
+        ),
     )
     generate.add_argument(
         "--no-config",
@@ -96,7 +99,7 @@ def cmd_version(_args: argparse.Namespace) -> int:
 
 def cmd_generate(args: argparse.Namespace) -> int:
     paths = _resolve_and_validate(args, require_content=True)
-    skills_dir = Path(args.skills_dir) if args.skills_dir else paths.skills
+    skills_dir = paths.generated_skills
 
     agents = load_agents(paths.claude_agents)
     commands = load_commands(paths.claude_commands)
@@ -112,6 +115,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
         skills_dir,
         raptor_home=paths.raptor_home,
         mode=args.skills_mode,
+        collision_dir=args.collision_dir,
         previous_map=previous_map,
         dry_run=args.dry_run,
     )
@@ -142,7 +146,6 @@ def cmd_generate(args: argparse.Namespace) -> int:
         fragment_path, notes_path = write_config(
             paths.raptor_home,
             paths.opencode_config,
-            paths.plugins,
             skill_names,
             dry_run=args.dry_run,
         )

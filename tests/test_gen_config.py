@@ -26,20 +26,19 @@ def _parse_jsonc(text: str) -> dict[str, object]:
 
 def test_fragment_has_expected_shape(tmp_path: Path) -> None:
     raptor = tmp_path / "raptor"
-    plugin = tmp_path / "config" / "plugins"
 
-    fragment = build_fragment(raptor, plugin, ["audit"])
+    fragment = build_fragment(raptor, ["audit"], install_home="/opt/raptor")
 
-    assert fragment["instructions"] == [str(raptor / "AGENTS.md")]
+    assert fragment["instructions"] == ["{env:RAPTOR_HOME}/AGENTS.md"]
     assert fragment["env"] == {
-        "RAPTOR_HOME": str(raptor),
-        "CLAUDE_ENV_FILE": str(raptor / ".claude" / "raptor.env"),
+        "RAPTOR_HOME": "/opt/raptor",
+        "CLAUDE_ENV_FILE": "{env:RAPTOR_HOME}/.claude/raptor.env",
         "CLAUDECODE": "1",
         "CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR": "1",
         "BASH_DEFAULT_TIMEOUT_MS": "300000",
-        "PATH": f"{raptor / 'libexec'}:" + "{env:PATH}",
+        "PATH": "{env:RAPTOR_HOME}/libexec:{env:PATH}",
     }
-    assert fragment["plugin"] == [str(plugin / "raptor-guard.ts")]
+    assert fragment["plugin"] == ["plugins/raptor-guard.ts"]
     assert fragment["permissions"] == [
         {"action": "skill", "resource": "raptor-*", "effect": "allow"},
         {"action": "skill", "resource": "audit", "effect": "allow"},
@@ -48,7 +47,7 @@ def test_fragment_has_expected_shape(tmp_path: Path) -> None:
 
 
 def test_permissions_include_every_generated_skill_without_duplicates(tmp_path: Path) -> None:
-    fragment = build_fragment(tmp_path / "raptor", tmp_path / "plugins", ["b", "a", "a"])
+    fragment = build_fragment(tmp_path / "raptor", ["b", "a", "a"])
 
     resources = [item["resource"] for item in fragment["permissions"]]
     assert resources == ["raptor-*", "b", "a"]
@@ -78,7 +77,7 @@ def test_mcp_file_is_translated(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    fragment = build_fragment(tmp_path, tmp_path / "plugins", [])
+    fragment = build_fragment(tmp_path, [])
 
     servers = fragment["mcp"]["servers"]
     assert servers["local-tool"] == {
@@ -110,28 +109,40 @@ def test_mcp_server_without_url_or_command_fails(tmp_path: Path) -> None:
 
 
 def test_rendered_fragment_is_valid_jsonc(tmp_path: Path) -> None:
-    fragment = build_fragment(tmp_path / "raptor", tmp_path / "plugins", ["audit"])
+    fragment = build_fragment(tmp_path / "raptor", ["audit"], install_home="/opt/raptor")
     text = render_fragment(fragment)
 
     assert text.startswith("//")
     assert _parse_jsonc(text) == fragment
 
 
+def test_fragment_never_embeds_the_generation_checkout(tmp_path: Path) -> None:
+    raptor = tmp_path / "test-checkout"
+    text = render_fragment(build_fragment(raptor, ["audit"], install_home="/opt/raptor"))
+
+    assert str(raptor) not in text
+    assert "/tmp/" not in text
+
+
 def test_merge_notes_explain_every_key(tmp_path: Path) -> None:
-    fragment = build_fragment(tmp_path / "raptor", tmp_path / "plugins", ["audit"])
+    fragment = build_fragment(tmp_path / "raptor", ["audit"], install_home="/opt/raptor")
     notes = render_notes(fragment)
 
     for key in ("instructions", "env", "permissions", "plugin", "mcp"):
         assert f"`{key}`" in notes
     assert "libexec" in notes
     assert "skill * deny" in notes
-    assert str(tmp_path / "raptor" / "AGENTS.md") in notes or "AGENTS.md" in notes
+    assert "{env:RAPTOR_HOME}/AGENTS.md" in notes
+    assert "--raptor-home" in notes
+    assert str(tmp_path) not in notes
 
 
 def test_write_config_writes_fragment_and_notes(tmp_path: Path) -> None:
     out = tmp_path / "config"
 
-    fragment_path, notes_path = write_config(tmp_path / "raptor", out, out / "plugins", ["audit"])
+    fragment_path, notes_path = write_config(
+        tmp_path / "raptor", out, ["audit"], install_home="/opt/raptor"
+    )
 
     assert fragment_path == out / FRAGMENT_NAME
     assert notes_path == out / NOTES_NAME
@@ -143,7 +154,7 @@ def test_write_config_dry_run_writes_nothing(tmp_path: Path) -> None:
     out = tmp_path / "config"
 
     fragment_path, notes_path = write_config(
-        tmp_path / "raptor", out, out / "plugins", ["audit"], dry_run=True
+        tmp_path / "raptor", out, ["audit"], install_home="/opt/raptor", dry_run=True
     )
 
     assert fragment_path.parent == out

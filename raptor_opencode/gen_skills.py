@@ -86,31 +86,47 @@ def plan_skills(
     skills_dir: str | Path,
     *,
     mode: Literal["symlink", "copy"] = DEFAULT_MODE,
+    collision_dir: str | Path | None = None,
     previous_map: Mapping[str, Any] | None = None,
 ) -> list[SkillPlan]:
-    """Decide target names and strategies for every source skill."""
+    """Decide target names and strategies for every source skill.
+
+    *skills_dir* is the (owned) output directory; nothing outside it is
+    written. Collisions are only checked against *collision_dir*, an optional
+    read-only directory such as the user's global skills folder. Without it,
+    the generated tree never renames anything.
+    """
     _validate_mode(mode)
-    target_root = Path(skills_dir)
+    collision_root = Path(collision_dir) if collision_dir is not None else None
     previous = _previous_entries(previous_map)
     owned = {entry.get("target") for entry in previous.values() if entry.get("target")}
-    existing = _existing_names(target_root)
+    existing = _existing_names(collision_root) if collision_root is not None else set()
     plans: list[SkillPlan] = []
     claimed: dict[str, Path] = {}
 
     for skill in discover_skills(source_dir):
         target = skill.name
         renamed = False
-        if target in existing and not _is_ours(target_root / target, skill.path, owned):
+        if (
+            collision_root is not None
+            and target in existing
+            and not _is_ours(collision_root / target, skill.path, owned)
+        ):
             target = f"{_COLLISION_PREFIX}{target}"
             renamed = True
         if target in claimed:
             raise GenerationError(
                 f"skills {claimed[target]} and {skill.path} both map to {target!r}"
             )
-        if target in existing and not _is_ours(target_root / target, skill.path, owned):
+        if (
+            collision_root is not None
+            and target in existing
+            and not _is_ours(collision_root / target, skill.path, owned)
+        ):
             raise GenerationError(
-                f"cannot place skill {skill.name!r}: {target_root / target} is owned by "
-                "another package; remove it or choose another --skills-dir"
+                f"cannot place skill {skill.name!r}: {collision_root / target} is "
+                "already owned by another package; remove it or pass another "
+                "--collision-dir"
             )
         claimed[target] = skill.path
         plans.append(
@@ -130,17 +146,25 @@ def generate_skills(
     *,
     raptor_home: str | Path,
     mode: Literal["symlink", "copy"] = DEFAULT_MODE,
+    collision_dir: str | Path | None = None,
     previous_map: Mapping[str, Any] | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Materialise every skill and return the ``skills-map.json`` document.
+    """Materialise every skill under *skills_dir* and return the skills map.
 
-    The caller is responsible for writing the returned document; keeping I/O
-    separate makes ``--dry-run`` trivial and the mapper easy to test.
+    All writes stay below *skills_dir*. *collision_dir* is only inspected, never
+    modified. The caller owns ``skills-map.json`` and any install-time copy to
+    the global skills directory.
     """
     root = Path(raptor_home)
     target_root = Path(skills_dir)
-    plans = plan_skills(source_dir, target_root, mode=mode, previous_map=previous_map)
+    plans = plan_skills(
+        source_dir,
+        target_root,
+        mode=mode,
+        collision_dir=collision_dir,
+        previous_map=previous_map,
+    )
     previous = _previous_entries(previous_map)
 
     for plan in plans:
@@ -176,9 +200,7 @@ def write_skills_map(document: Mapping[str, Any], destination: str | Path) -> Pa
     """Write *document* as JSON and return the path written."""
     path = Path(destination)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    path.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return path
 
 
@@ -259,9 +281,7 @@ def _materialise_normalized_dir(source: Path, target: Path) -> None:
                 shutil.copy2(child, destination)
 
 
-def _strategy(
-    skill: SkillSource, mode: str
-) -> Literal["symlink", "copy", "materialise", "file"]:
+def _strategy(skill: SkillSource, mode: str) -> Literal["symlink", "copy", "materialise", "file"]:
     if skill.kind == "file":
         return "file"
     if mode == "copy":
@@ -274,9 +294,7 @@ def _strategy(
 
 def _needs_normalisation(path: Path) -> bool:
     frontmatter, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
-    return not _has_text(frontmatter.get("name")) or not _has_text(
-        frontmatter.get("description")
-    )
+    return not _has_text(frontmatter.get("name")) or not _has_text(frontmatter.get("description"))
 
 
 def _normalize_tree(root: Path) -> None:
@@ -360,9 +378,7 @@ def _truncate(text: str) -> str:
 
 def _validate_mode(mode: str) -> None:
     if mode not in {"symlink", "copy"}:
-        raise GenerationError(
-            f"unsupported skills mode {mode!r} (use 'symlink' or 'copy')"
-        )
+        raise GenerationError(f"unsupported skills mode {mode!r} (use 'symlink' or 'copy')")
 
 
 def _previous_entries(previous_map: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -371,9 +387,7 @@ def _previous_entries(previous_map: Mapping[str, Any] | None) -> dict[str, Any]:
     skills = previous_map.get("skills")
     if not isinstance(skills, Mapping):
         return {}
-    return {
-        str(key): value for key, value in skills.items() if isinstance(value, Mapping)
-    }
+    return {str(key): value for key, value in skills.items() if isinstance(value, Mapping)}
 
 
 def _existing_names(target_root: Path) -> set[str]:
@@ -395,9 +409,7 @@ def _is_ours(target: Path, source: Path, owned: set[str]) -> bool:
     return resolved == source_root or source_root in resolved.parents
 
 
-def _remove_obsolete(
-    target: Path, plan: SkillPlan, previous: Mapping[str, Any]
-) -> None:
+def _remove_obsolete(target: Path, plan: SkillPlan, previous: Mapping[str, Any]) -> None:
     entry = previous.get(plan.source.name)
     if not isinstance(entry, Mapping):
         return

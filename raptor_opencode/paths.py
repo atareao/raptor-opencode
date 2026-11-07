@@ -130,6 +130,11 @@ class Paths:
         return self.opencode_config / "merge_notes.md"
 
     @property
+    def generated_skills(self) -> Path:
+        """Skills generated inside the OpenCode config (``<out>/skills``)."""
+        return self.opencode_config / "skills"
+
+    @property
     def skills_map_file(self) -> Path:
         """Generated mapping between RAPTOR skills and installed names."""
         return self.opencode_config / "skills-map.json"

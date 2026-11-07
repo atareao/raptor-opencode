@@ -156,11 +156,14 @@ def test_collision_gets_raptor_prefix_and_is_recorded(tmp_path: Path) -> None:
     source = tmp_path / "raptor" / ".claude" / "skills"
     _valid_skill(source, "audit")
     out = tmp_path / "skills"
-    foreign = out / "audit"
+    collisions = tmp_path / "global-skills"
+    foreign = collisions / "audit"
     foreign.mkdir(parents=True)
     (foreign / "SKILL.md").write_text("foreign\n", encoding="utf-8")
 
-    document = generate_skills(source, out, raptor_home=tmp_path / "raptor")
+    document = generate_skills(
+        source, out, raptor_home=tmp_path / "raptor", collision_dir=collisions
+    )
 
     assert (out / "raptor-audit").is_symlink()
     assert (foreign / "SKILL.md").read_text(encoding="utf-8") == "foreign\n"
