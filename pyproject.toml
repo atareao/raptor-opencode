@@ -31,6 +31,9 @@ packages = ["raptor_opencode"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = [
+    "integration: runs against a real RAPTOR checkout (skipped when unavailable)",
+]
 
 [tool.ruff]
 line-length = 100

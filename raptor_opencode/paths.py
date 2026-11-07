@@ -109,6 +109,31 @@ class Paths:
         """Source directory with RAPTOR's Python hook scripts."""
         return self.raptor_home / ".claude" / "hooks"
 
+    @property
+    def claude_skills(self) -> Path:
+        """Source directory with RAPTOR's skills tree."""
+        return self.raptor_home / ".claude" / "skills"
+
+    @property
+    def policy_file(self) -> Path:
+        """Generated per-agent policy document."""
+        return self.opencode_config / "raptor-policy.json"
+
+    @property
+    def fragment_file(self) -> Path:
+        """Generated OpenCode configuration fragment (JSONC)."""
+        return self.opencode_config / "opencode.fragment.jsonc"
+
+    @property
+    def merge_notes_file(self) -> Path:
+        """Human instructions for merging the fragment."""
+        return self.opencode_config / "merge_notes.md"
+
+    @property
+    def skills_map_file(self) -> Path:
+        """Generated mapping between RAPTOR skills and installed names."""
+        return self.opencode_config / "skills-map.json"
+
 
 def resolve_paths(
     raptor_root: str | Path | None = None,
