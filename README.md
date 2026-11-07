@@ -28,6 +28,22 @@ RAPTOR itself may need additional tooling for some commands; see
 
 ## Install
 
+**Option A - the wrapper (no pipx needed).** It checks Python 3.11+, installs
+the adapter with `pipx` when available (a local `.venv` otherwise) and forwards
+every flag to `raptor-opencode install`:
+
+```bash
+git clone https://github.com/atareao/raptor-opencode.git
+cd raptor-opencode && ./install.sh --merge-config
+# restart OpenCode, then:
+raptor-opencode doctor
+```
+
+Use `./install.sh --help` for the flag list; `--dry-run` prints the plan without
+touching anything, and `--skip-deps` lets the CLI skip RAPTOR's own virtualenv.
+
+**Option B - pipx directly.**
+
 ```bash
 git clone https://github.com/atareao/raptor-opencode.git
 cd raptor-opencode && pipx install . && raptor-opencode install --merge-config
