@@ -83,6 +83,20 @@ def skills_dir(env: Mapping[str, str] | None = None) -> Path:
     return _home(environ) / ".agents" / "skills"
 
 
+def data_dir(env: Mapping[str, str] | None = None) -> Path:
+    """Return ``$XDG_DATA_HOME/raptor-opencode`` (or the XDG default)."""
+    environ = os.environ if env is None else env
+    data_home = _env_path(environ, "XDG_DATA_HOME")
+    if data_home is not None:
+        return data_home / "raptor-opencode"
+    return _home(environ) / ".local" / "share" / "raptor-opencode"
+
+
+def generated_dir(env: Mapping[str, str] | None = None) -> Path:
+    """Return the default generated-artifacts directory used by ``install``."""
+    return data_dir(env=env) / "generated"
+
+
 @dataclass(frozen=True, slots=True)
 class Paths:
     """Every directory the adapter reads from or writes to."""

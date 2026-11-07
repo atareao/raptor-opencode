@@ -35,6 +35,8 @@ def build_fragment(
     skill_names: Sequence[str],
     *,
     install_home: str | Path | None = None,
+    raptor_python: str | Path | None = None,
+    plugin_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Return the configuration fragment as a plain dictionary.
 
@@ -57,10 +59,12 @@ def build_fragment(
         },
         "permissions": _permissions(skill_names),
     }
+    if raptor_python is not None:
+        fragment["env"]["RAPTOR_PYTHON"] = str(raptor_python)
     servers = load_mcp_servers(root)
     if servers is not None:
         fragment["mcp"] = {"servers": servers}
-    fragment["plugin"] = [PLUGIN_RELATIVE]
+    fragment["plugin"] = [str(plugin_path) if plugin_path is not None else PLUGIN_RELATIVE]
     return fragment
 
 
@@ -99,6 +103,8 @@ def write_config(
     skill_names: Sequence[str],
     *,
     install_home: str | Path | None = None,
+    raptor_python: str | Path | None = None,
+    plugin_path: str | Path | None = None,
     dry_run: bool = False,
 ) -> tuple[Path, Path]:
     """Write ``opencode.fragment.jsonc`` and ``merge_notes.md`` under *out_dir*.
@@ -106,7 +112,13 @@ def write_config(
     Returns the fragment and notes paths, whether or not anything was written.
     Nothing outside *out_dir* is touched.
     """
-    fragment = build_fragment(raptor_home, skill_names, install_home=install_home)
+    fragment = build_fragment(
+        raptor_home,
+        skill_names,
+        install_home=install_home,
+        raptor_python=raptor_python,
+        plugin_path=plugin_path,
+    )
     directory = Path(out_dir)
     fragment_path = directory / FRAGMENT_NAME
     notes_path = directory / NOTES_NAME
