@@ -1,1 +1,1 @@
-plans/PLAN-001.md
+plans/PLAN-001-ARCHIVED.md
