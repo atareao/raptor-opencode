@@ -21,8 +21,18 @@ configuración de OpenCode. RAPTOR sigue siendo la fuente de verdad.
 
 ## Instalación
 
+Opción A, el wrapper incluido en el repo (no necesita `pipx`): comprueba
+Python 3.11+, instala el adaptador con `pipx` si está disponible (si no, crea
+`.venv/` en el checkout) y reenvía **todos** los flags a `raptor-opencode install`.
+
 ```bash
-raptor-opencode install
+./install.sh --merge-config      # o: ./install.sh --help
+```
+
+Opción B, `pipx` directamente:
+
+```bash
+pipx install . && raptor-opencode install
 ```
 
 Por defecto:
