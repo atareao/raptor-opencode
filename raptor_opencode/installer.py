@@ -307,7 +307,7 @@ def uninstall(
 ) -> UninstallResult:
     """Reverse a previous install using its manifest."""
     environ = os.environ if env is None else env
-    _root, generated_dir, opencode_dir, skills_dir = default_paths(
+    _root, generated_dir, _opencode_dir, _skills_dir = default_paths(
         generated=generated, opencode=opencode, skills=skills, env=environ
     )
     manifest_path = generated_dir.parent / MANIFEST_NAME

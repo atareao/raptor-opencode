@@ -133,7 +133,7 @@ def test_generate_dry_run_writes_nothing(tmp_path: Path) -> None:
 
 
 def test_generate_rejects_a_missing_claude_md(tmp_path: Path) -> None:
-    with pytest.raises(GenerationError, match="missing .*CLAUDE.md"):
+    with pytest.raises(GenerationError, match=r"missing .*CLAUDE\.md"):
         generate_agents_md(tmp_path, tmp_path / "out")
 
 
