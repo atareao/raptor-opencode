@@ -13,6 +13,7 @@ from .errors import RaptorOpencodeError
 from .gen_agents import load_agents
 from .gen_commands import load_commands
 from .gen_config import write_config
+from .gen_plugin import generate_plugin
 from .gen_policy import build_policy, write_policy
 from .gen_skills import DEFAULT_MODE, generate_skills, write_skills_map
 from .paths import Paths, resolve_paths
@@ -152,12 +153,19 @@ def cmd_generate(args: argparse.Namespace) -> int:
         for path in (fragment_path, notes_path):
             print(f"[dry-run] {path}" if args.dry_run else path)
 
+    plugin_path, core_path = generate_plugin(paths.opencode_config, dry_run=args.dry_run)
+    for path in (plugin_path, core_path):
+        print(f"[dry-run] {path}" if args.dry_run else path)
+
     for warning in policy.get("warnings", []):
         print(f"warning: {warning}", file=sys.stderr)
 
     prefix = "[dry-run] would generate" if args.dry_run else "generated"
     skill_count = len(skills_map["skills"])
-    print(f"{prefix} {len(agents)} agents, {len(commands)} commands and {skill_count} skills")
+    print(
+        f"{prefix} {len(agents)} agents, {len(commands)} commands, "
+        f"{skill_count} skills and 2 plugin files"
+    )
     return 0
 
 

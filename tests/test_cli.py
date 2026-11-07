@@ -64,9 +64,11 @@ def test_generate_writes_every_artifact(
     assert (out / "skills-map.json").is_file()
     assert (out / "opencode.fragment.jsonc").is_file()
     assert (out / "merge_notes.md").is_file()
+    assert (out / "plugins" / "raptor-guard.ts").is_file()
+    assert (out / "plugins" / "raptor-guard-core.mjs").is_file()
 
     captured = capsys.readouterr()
-    assert "generated 5 agents, 5 commands and 0 skills" in captured.out
+    assert "generated 5 agents, 5 commands, 0 skills and 2 plugin files" in captured.out
 
     for path in [*(out / "agents").glob("*.md"), *(out / "commands").glob("*.md")]:
         content = path.read_text(encoding="utf-8")
@@ -299,6 +301,7 @@ def test_full_pipeline_on_real_raptor(
     assert "/tmp/" not in text
     assert any(item["resource"] == "raptor-*" for item in fragment["permissions"])
     assert (out / "skills-map.json").is_file()
+    assert (out / "plugins" / "raptor-guard.ts").is_file()
     mapping = json.loads((out / "skills-map.json").read_text(encoding="utf-8"))
     assert "coverage" in mapping["skills"]
     assert "tune" in mapping["skills"]
