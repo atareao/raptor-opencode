@@ -56,6 +56,32 @@ OpenCode artifacts, links them into `~/.config/opencode` and `~/.agents/skills`,
 writes the install manifest and merges the config fragment. Use `--dry-run` to
 inspect the plan, or `--copy` instead of symlinks.
 
+## Recommended: one workspace, many targets
+
+Install into a dedicated workspace with `--scope project`, then let RAPTOR's
+`/project` registry isolate each target. Example workspace: `/data/security`.
+
+1. **Create the workspace** and install the adapters inside it:
+
+   ```bash
+   mkdir -p /data/security && cd /data/security && git init
+   /path/to/raptor-opencode/install.sh --scope project --merge-config
+   ```
+
+2. **Create a target**: `/project create <name> --target <repo-or-url>`.
+   The clone and its output live in
+   `<RAPTOR_HOME>/out/projects/<name>/`, never in the workspace.
+3. **Analyze** with `/scan`, `/agentic`, `/codeql`, ...; switch targets with
+   `/project switch <name>` and finish with `/project close`.
+4. **Read findings** through the workspace symlink
+   `findings/<name>/findings/`, which points at
+   `~/.local/share/raptor/out/projects` by default.
+
+`--scope project` keeps agents, commands, skills and `opencode.json` inside the
+workspace; only the shared virtualenv lives under `$XDG_DATA_HOME`. See
+[`docs/project-workspace.md`](docs/project-workspace.md) for the layout, the
+`RAPTOR_OUT_DIR` restriction and how to purge a target or uninstall.
+
 ## What gets installed
 
 | Artifact | Count | Location |
@@ -125,6 +151,7 @@ artifact counts or hook names, update the expectations in
 ## Documentation
 
 - [`docs/install.md`](docs/install.md) - installation, flags and layout.
+- [`docs/project-workspace.md`](docs/project-workspace.md) - one workspace, many targets.
 - [`docs/hooks.md`](docs/hooks.md) - guard behavior and how to extend it.
 - [`docs/port.md`](docs/port.md) - mapping decisions and known limits.
 - [`docs/upgrading.md`](docs/upgrading.md) - moving to a new RAPTOR tag.

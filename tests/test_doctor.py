@@ -311,8 +311,18 @@ def test_report_to_dict_is_machine_readable(sandbox: Path) -> None:
     assert payload["version"] == 1
     assert payload["status"] == "ok"
     assert payload["exit_code"] == 0
+    assert payload["scope"] == "global"
     assert payload["ref"] == REF
-    assert set(payload["paths"]) == {"raptor_home", "opencode_dir", "generated_dir", "skills_dir"}
+    assert set(payload["paths"]) == {
+        "scope",
+        "raptor_home",
+        "project_root",
+        "opencode_dir",
+        "generated_dir",
+        "skills_dir",
+        "manifest",
+        "config",
+    }
     assert payload["counts"] == {"ok": len(payload["checks"]), "warn": 0, "fail": 0}
     assert all(set(check) >= {"name", "status", "message"} for check in payload["checks"])
 
@@ -777,4 +787,6 @@ def test_cli_doctor_passes_the_flags_through(
         "opencode_dir": sandbox / "config",
         "generated_dir": sandbox / "gen",
         "skills": sandbox / "skills",
+        "scope": "global",
+        "cwd": None,
     }

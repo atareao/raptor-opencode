@@ -21,9 +21,19 @@ from typing import Any, Literal
 
 from .gen_agents_md import find_unrewritten_paths
 from .gen_plugin import CORE_NAME, PLUGIN_NAME
-from .installer import DEFAULT_REF, MANIFEST_NAME, JsoncError, loads_jsonc
-from .paths import Paths, resolve_paths
-from .paths import generated_dir as default_generated_dir
+from .installer import DEFAULT_REF, JsoncError, loads_jsonc
+from .paths import Paths, data_dir, resolve_paths
+from .scope import (
+    DEFAULT_PROJECT_CONFIG,
+    PROJECT_GENERATED_DIRNAME,
+    PROJECT_MANIFEST_NAME,
+    PROJECT_OPENCODE_DIRNAME,
+    PROJECT_SKILLS_PARTS,
+    Layout,
+    Scope,
+    project_config_candidates,
+    resolve_layout,
+)
 
 Status = Literal["ok", "warn", "fail"]
 Runner = Callable[..., subprocess.CompletedProcess[str]]
@@ -83,6 +93,7 @@ class DoctorReport:
     checks: tuple[CheckResult, ...]
     ref: str
     paths: dict[str, str]
+    scope: Scope = "global"
 
     @property
     def exit_code(self) -> int:
@@ -116,6 +127,7 @@ class DoctorReport:
             "version": REPORT_VERSION,
             "status": self.status,
             "exit_code": self.exit_code,
+            "scope": self.scope,
             "ref": self.ref,
             "paths": self.paths,
             "counts": counts,
@@ -124,7 +136,7 @@ class DoctorReport:
 
     def render(self) -> str:
         """Return the human-readable report, one line per check."""
-        lines = [f"raptor-opencode doctor (ref {self.ref})"]
+        lines = [f"raptor-opencode doctor ({self.scope} scope, ref {self.ref})"]
         lines.extend(
             f"[{check.status:<4}] {check.name:<22} {check.message}" for check in self.checks
         )
@@ -143,6 +155,8 @@ def run_checks(
     opencode_dir: str | Path | None = None,
     generated_dir: str | Path | None = None,
     skills: str | Path | None = None,
+    scope: Scope = "global",
+    cwd: str | Path | None = None,
     expected: ExpectedCounts = DEFAULT_EXPECTED,
     run: Runner = subprocess.run,
     which: Which = shutil.which,
@@ -150,15 +164,21 @@ def run_checks(
 ) -> DoctorReport:
     """Run every check and return the report.
 
-    ``run`` and ``which`` are injectable so tests can drive the git and version
-    probes without spawning processes. Nothing is written to disk.
+    ``scope`` picks the layout: ``global`` inspects the user's ``XDG`` tree,
+    ``project`` inspects ``cwd`` (default: the working directory). ``run`` and
+    ``which`` are injectable so tests can drive the git and version probes
+    without spawning processes. Nothing is written to disk.
     """
     environ = os.environ if env is None else env
-    paths = resolve_paths(raptor_root=raptor_home, out_dir=opencode_dir, env=environ)
-    generated = (
-        Path(generated_dir) if generated_dir is not None else default_generated_dir(env=environ)
+    layout, layout_checks = _doctor_layout(
+        scope,
+        cwd=cwd,
+        generated=generated_dir,
+        opencode=opencode_dir,
+        skills=skills,
+        env=environ,
     )
-    skills_root = Path(skills) if skills is not None else paths.skills
+    paths = resolve_paths(raptor_root=raptor_home, out_dir=layout.opencode, env=environ)
 
     checks: list[CheckResult] = []
     checks.extend(_check_prerequisites(which))
@@ -166,20 +186,25 @@ def run_checks(
     if paths.raptor_home.is_dir():
         checks.extend(_check_hooks(paths.raptor_home))
 
-    artifacts = _Artifacts.from_paths(paths, generated)
+    checks.extend(layout_checks)
+    artifacts = _Artifacts.from_paths(paths, layout.generated)
     checks.extend(_check_artifacts(artifacts, expected))
-    checks.extend(_check_manifest(artifacts, skills_root))
+    checks.extend(_check_manifest(artifacts, layout.skills, layout.manifest))
     checks.extend(_check_agents_md(artifacts))
-    checks.extend(_check_config(paths.opencode_config))
+    checks.extend(_check_config(layout.config))
     checks.extend(_check_opencode_version(run, which))
 
     report_paths = {
+        "scope": layout.scope,
         "raptor_home": str(paths.raptor_home),
-        "opencode_dir": str(paths.opencode_config),
-        "generated_dir": str(generated),
-        "skills_dir": str(skills_root),
+        "project_root": str(layout.project_root) if layout.project_root is not None else "",
+        "opencode_dir": str(layout.opencode),
+        "generated_dir": str(layout.generated),
+        "skills_dir": str(layout.skills),
+        "manifest": str(layout.manifest),
+        "config": str(layout.config),
     }
-    return DoctorReport(checks=tuple(checks), ref=ref, paths=report_paths)
+    return DoctorReport(checks=tuple(checks), ref=ref, paths=report_paths, scope=layout.scope)
 
 
 def doctor(
@@ -189,6 +214,8 @@ def doctor(
     opencode_dir: str | Path | None = None,
     generated_dir: str | Path | None = None,
     skills: str | Path | None = None,
+    scope: Scope = "global",
+    cwd: str | Path | None = None,
     expected: ExpectedCounts = DEFAULT_EXPECTED,
     run: Runner = subprocess.run,
     which: Which = shutil.which,
@@ -201,11 +228,73 @@ def doctor(
         opencode_dir=opencode_dir,
         generated_dir=generated_dir,
         skills=skills,
+        scope=scope,
+        cwd=cwd,
         expected=expected,
         run=run,
         which=which,
         env=env,
     )
+
+
+def _doctor_layout(
+    scope: Scope,
+    *,
+    cwd: str | Path | None,
+    generated: str | Path | None,
+    opencode: str | Path | None,
+    skills: str | Path | None,
+    env: Mapping[str, str],
+) -> tuple[Layout, list[CheckResult]]:
+    """Resolve the layout, turning an ambiguous project config into a check.
+
+    ``resolve_layout`` refuses to guess when a project has several config files;
+    doctor reports that as a failure instead of aborting and still inspects the
+    rest of the tree.
+    """
+    if scope == "project":
+        root = Path(cwd) if cwd is not None else Path.cwd()
+        root = root.resolve()
+        found = [path for path in project_config_candidates(root) if path.is_file()]
+        if len(found) > 1:
+            opencode_dir = (
+                Path(opencode) if opencode is not None else root / PROJECT_OPENCODE_DIRNAME
+            )
+            layout = Layout(
+                scope="project",
+                project_root=root,
+                generated=(
+                    Path(generated)
+                    if generated is not None
+                    else opencode_dir / PROJECT_GENERATED_DIRNAME
+                ),
+                opencode=opencode_dir,
+                skills=(
+                    Path(skills) if skills is not None else root.joinpath(*PROJECT_SKILLS_PARTS)
+                ),
+                manifest=opencode_dir / PROJECT_MANIFEST_NAME,
+                config=root / DEFAULT_PROJECT_CONFIG,
+                venv=data_dir(env=env) / "venvs",
+            )
+            listed = ", ".join(str(path) for path in found)
+            return layout, [
+                CheckResult(
+                    "project-config",
+                    "fail",
+                    f"{len(found)} OpenCode project configs in {root}: {listed}. OpenCode "
+                    "loads all of them (later wins), so raptor-opencode cannot know which "
+                    f"one it owns. Keep only {DEFAULT_PROJECT_CONFIG} and rerun.",
+                )
+            ]
+    layout = resolve_layout(
+        scope,
+        cwd=cwd,
+        generated=generated,
+        opencode=opencode,
+        skills=skills,
+        env=env,
+    )
+    return layout, []
 
 
 # --- individual checks ------------------------------------------------------
@@ -439,8 +528,9 @@ def _policy_check(artifacts: _Artifacts) -> CheckResult:
     return CheckResult("policy", "ok", f"{path} parses ({len(agents)} agent entries)")
 
 
-def _check_manifest(artifacts: _Artifacts, skills_root: Path) -> list[CheckResult]:
-    manifest_path = artifacts.generated.parent / MANIFEST_NAME
+def _check_manifest(
+    artifacts: _Artifacts, skills_root: Path, manifest_path: Path
+) -> list[CheckResult]:
     if not manifest_path.is_file():
         return [
             CheckResult(
@@ -589,14 +679,14 @@ def _check_agents_md(artifacts: _Artifacts) -> list[CheckResult]:
     ]
 
 
-def _check_config(opencode: Path) -> list[CheckResult]:
-    path = next((opencode / name for name in CONFIG_NAMES if (opencode / name).is_file()), None)
+def _check_config(config: Path) -> list[CheckResult]:
+    path = config if config.is_file() else None
     if path is None:
         return [
             CheckResult(
                 "config",
                 "fail",
-                f"no opencode.jsonc under {opencode}; merge the generated fragment "
+                f"no OpenCode config at {config}; merge the generated fragment "
                 "(`raptor-opencode install --merge-config`) or copy opencode.fragment.jsonc "
                 "into it, then restart OpenCode.",
             )
