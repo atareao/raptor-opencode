@@ -40,3 +40,5 @@ idéntico al original y `.agents/` eliminado.
   (`python3 raptor.py --help|doctor|describe`) funciona igualmente, pero los
   paquetes opcionales no: p. ej. `packages/cve_diff` falla con
   `ModuleNotFoundError: No module named 'typer'`.
+
+Archivado: 2026-11-07

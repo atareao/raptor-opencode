@@ -130,7 +130,7 @@ artifact counts or hook names, update the expectations in
 - [`docs/upgrading.md`](docs/upgrading.md) - moving to a new RAPTOR tag.
 - [`docs/troubleshooting.md`](docs/troubleshooting.md) - common failures.
 - [`docs/release.md`](docs/release.md) - version bump, changelog and tagging.
-- [`plans/PLAN-001.md`](plans/PLAN-001.md) - design plan and status.
+- [`plans/PLAN-001-ARCHIVED.md`](plans/PLAN-001-ARCHIVED.md) - design plan and status.
 
 ## Legal notice
 

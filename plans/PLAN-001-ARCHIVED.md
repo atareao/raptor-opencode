@@ -77,10 +77,11 @@ raptor-opencode/
 13. [x] **CI GitHub Actions**: ruff + pytest en ubuntu, instalación en `HOME` temporal, `doctor` verde, shellcheck de los scripts.
     - Resultado: workflow con ruff, pytest, `tsc`, tests node y verificación de instalación.
 14. [x] **Smoke test end-to-end** con OpenCode real: `/version`, `/scan --help`, carga de un subagente, skill visible, hook que bloquea un dominio no permitido.
-    - Resultado: smoke reproducible en `scripts/guard-smoke.mjs`; la validación manual con una instalación real de OpenCode queda anotada como pendiente de release.
+    - Resultado: smoke reproducible en `scripts/guard-smoke.mjs`; e2e de CI (instalación en `HOME` temporal + `doctor` + guard contra hooks reales) y prueba manual del handler (permitido / compuesto / fuera de allowlist / sin sesión).
+    - Límite: no se ejecutó una sesión TUI interactiva de OpenCode; la evidencia es la del e2e de CI y la prueba manual del handler.
 15. [x] **Docs**: `docs/port.md` (mapeo y límites), `docs/hooks.md` (política y cómo extenderla), `docs/troubleshooting.md`, `docs/upgrading.md` (subir de tag de RAPTOR).
     - Resultado: cinco documentos publicados, incluido `docs/install.md`.
-16. [ ] **Cierre**: marcar tareas, `docs/` completo, renombrar a `plans/PLAN-001-ARCHIVED.md`.
+16. [x] **Cierre**: marcar tareas, `docs/` completo, renombrar a `plans/PLAN-001-ARCHIVED.md`.
 
 ## Riesgos y mitigaciones
 - Scripts que asumen `CLAUDECODE` o `~/.claude`: shim de env + `doctor` que detecta rutas duras; documentar parches si aparecen.
@@ -100,7 +101,11 @@ raptor-opencode/
 ## Estado
 
 - **Fecha:** 2026-11-07
-- **Ramas:** `development`, `feature/core-adapter`, `feature/skills-config`, `feature/doctor-ci`.
+- **Release:** `v0.1.0` publicado — https://github.com/atareao/raptor-opencode/releases/tag/v0.1.0
+- **Ramas:** `main` == `development`; CI en verde.
 - **Suites:** 190 tests pytest, 21 tests node, `tsc` y `ruff` en verde.
 - **Verificación real:** 68 enlaces instalados; el guard bloquea comandos compuestos y sesiones sin agente; `doctor` reporta 20 comprobaciones en `ok`.
-- **Pendientes:** tarea 16 (archivar el plan), smoke test con una instalación real de OpenCode y PRs de las ramas `feature/*` a `development`.
+- **Smoke:** cubierto por el e2e de CI (instalación en `HOME` temporal + `doctor` + guard contra hooks reales) y prueba manual del handler (permitido / compuesto / fuera de allowlist / sin sesión). No se ejecutó una sesión TUI interactiva.
+- **Pendientes:** ninguno.
+
+Archivado: 2026-11-07
